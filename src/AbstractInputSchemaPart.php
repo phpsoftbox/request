@@ -6,8 +6,10 @@ namespace PhpSoftBox\Request;
 
 /**
  * Базовый класс переиспользуемой части схемы: обязательны только правила, остальное по умолчанию пусто.
+ *
+ * Часть схемы — неизменяемое описание, поэтому класс readonly: наследники тоже объявляются readonly.
  */
-abstract class AbstractInputSchemaPart implements InputSchemaPartInterface
+abstract readonly class AbstractInputSchemaPart implements InputSchemaPartInterface
 {
     /**
      * @return array<string, mixed>

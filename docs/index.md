@@ -297,7 +297,7 @@ final class ProductRequest extends RequestSchema
     }
 }
 
-final class ProductBarcodeSchemaPart extends AbstractInputSchemaPart
+final readonly class ProductBarcodeSchemaPart extends AbstractInputSchemaPart
 {
     public function rules(): array
     {
@@ -371,7 +371,7 @@ $schema->only(['name']);           // ничего не изменит
 Для переиспользуемых частей можно вынести описание в класс:
 
 ```php
-final class DriverDataSchemaPart extends AbstractInputSchemaPart
+final readonly class DriverDataSchemaPart extends AbstractInputSchemaPart
 {
     public function rules(): array
     {
@@ -386,7 +386,7 @@ final class DriverDataSchemaPart extends AbstractInputSchemaPart
 ```
 
 `AbstractInputSchemaPart` требует только `rules()`; `filters()`, `messages()`, `attributes()`, `defaults()` по
-умолчанию пустые. Если часть реализует `InputSchemaPartInterface` напрямую, нужны все пять методов.
+умолчанию пустые. Класс `readonly` — наследник тоже объявляется `readonly` (`final readonly class …`). Если часть реализует `InputSchemaPartInterface` напрямую, нужны все пять методов.
 
 ```php
 // Своя реализация интерфейса без базового класса.

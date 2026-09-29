@@ -10,7 +10,7 @@ use PhpSoftBox\Validator\Rule\IntValidation;
 /**
  * Часть схемы с умолчанием номера и размера страницы.
  */
-final class PagingSchemaPart extends AbstractInputSchemaPart
+final readonly class PagingSchemaPart extends AbstractInputSchemaPart
 {
     public function rules(): array
     {
