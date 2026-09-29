@@ -10,6 +10,7 @@ use PhpSoftBox\Request\Exception\UnexpectedRouteParameterException;
 use PhpSoftBox\Request\Request;
 use PhpSoftBox\Request\RequestSchema;
 use PhpSoftBox\Request\RouteParameters;
+use PhpSoftBox\Request\Tests\Fixtures\RecordingValidator;
 use PhpSoftBox\Validator\ValidationOptions;
 use PhpSoftBox\Validator\ValidationResult;
 use PhpSoftBox\Validator\ValidatorInterface;
@@ -473,6 +474,140 @@ final class RequestSchemaTest extends TestCase
 
         self::assertSame('alex', $validator->lastData['name'] ?? null);
         self::assertSame('alex', $schema->request()->input('name'));
+    }
+
+    /**
+     * Проверяет, что правки payload через mergePayload() в beforeValidation() доходят до валидации и Request.
+     *
+     * @see RequestSchema::process()
+     * @see RequestSchema::beforeValidation()
+     */
+    #[Test]
+    public function beforeValidationPayloadEditsAreKept(): void
+    {
+        $validator = new RecordingValidator();
+
+        $request = new Request(
+            new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => 'alex']),
+            $validator,
+        );
+
+        $schema = new class ($request) extends RequestSchema {
+            public function rules(): array
+            {
+                return ['name' => [], 'source' => []];
+            }
+
+            public function beforeValidation(): void
+            {
+                $this->mergePayload(['source' => 'hook']);
+            }
+        };
+
+        $schema->validate();
+
+        self::assertSame(['name' => 'alex', 'source' => 'hook'], $validator->lastData);
+        self::assertSame('hook', $schema->request()->input('source'));
+    }
+
+    /**
+     * Проверяет, что прямое присваивание payload в beforeValidation() не теряется.
+     *
+     * @see RequestSchema::process()
+     * @see RequestSchema::beforeValidation()
+     */
+    #[Test]
+    public function beforeValidationDirectPayloadAssignmentIsKept(): void
+    {
+        $validator = new RecordingValidator();
+
+        $request = new Request(
+            new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => 'alex']),
+            $validator,
+        );
+
+        $schema = new class ($request) extends RequestSchema {
+            public function rules(): array
+            {
+                return ['name' => []];
+            }
+
+            public function beforeValidation(): void
+            {
+                $this->payload['name'] = 'ALEX';
+            }
+        };
+
+        $schema->validate();
+
+        self::assertSame('ALEX', $validator->lastData['name'] ?? null);
+        self::assertSame('ALEX', $schema->request()->input('name'));
+    }
+
+    /**
+     * Проверяет, что повторная обработка схемы и её копия после only() не применяют фильтры
+     * к уже отфильтрованным данным Request.
+     *
+     * @see RequestSchema::process()
+     * @see RequestSchema::only()
+     */
+    #[Test]
+    public function repeatedProcessingDoesNotFilterTwice(): void
+    {
+        $validator = new RecordingValidator();
+
+        $request = new Request(
+            new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => 'alex']),
+            $validator,
+        );
+
+        $schema = new class ($request) extends RequestSchema {
+            public function rules(): array
+            {
+                return ['name' => []];
+            }
+
+            public function filters(): array
+            {
+                return ['name' => static fn (mixed $value): string => $value . '!'];
+            }
+        };
+
+        // Первая обработка, повторная и обработка копии схемы начинают с исходных данных.
+        $schema->validate();
+        $schema->validate();
+        $schema->only(['name'])->validate();
+
+        self::assertSame('alex!', $validator->lastData['name'] ?? null);
+        self::assertSame('alex!', $request->input('name'));
+    }
+
+    /**
+     * Проверяет, что изменения Request, сделанные после создания схемы, учитываются при обработке.
+     *
+     * @see RequestSchema::process()
+     */
+    #[Test]
+    public function processUsesRequestChangesMadeAfterSchemaCreation(): void
+    {
+        $validator = new RecordingValidator();
+
+        $request = new Request(
+            new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => 'alex']),
+            $validator,
+        );
+
+        $schema = new class ($request) extends RequestSchema {
+            public function rules(): array
+            {
+                return ['name' => [], 'role' => []];
+            }
+        };
+
+        $request->merge(['role' => 'admin']);
+        $schema->validate();
+
+        self::assertSame(['name' => 'alex', 'role' => 'admin'], $validator->lastData);
     }
 
     /**

@@ -19,6 +19,8 @@ use function is_object;
 
 final class Request
 {
+    public const string ROUTE_PARAMS_ATTRIBUTE = '_route_params';
+
     private array $overrides    = [];
     private bool $replaceInput  = false;
     private array $filteredData = [];
@@ -143,6 +145,11 @@ final class Request
     }
 
     /**
+     * Возвращает входные данные запроса: query, body, files и параметры маршрута.
+     *
+     * Cookies и остальные атрибуты PSR-запроса (сессия, пользователь, служебные данные маршрута)
+     * сюда не попадают: их нужно читать явно через cookies() и attributes().
+     *
      * @return array<string, mixed>
      */
     public function all(): array
@@ -223,15 +230,27 @@ final class Request
     }
 
     /**
+     * Параметры текущего маршрута из атрибута `_route_params`, который выставляет router.
+     *
+     * @return array<string, mixed>
+     */
+    public function routeParams(): array
+    {
+        $routeParams = $this->psrRequest->getAttribute(self::ROUTE_PARAMS_ATTRIBUTE);
+
+        return is_array($routeParams) ? $routeParams : [];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function collectData(): array
     {
-        return Collection::from($this->cookies())
-            ->merge($this->query(), ['recursive' => true])
+        // Параметры маршрута идут последними: подменить их через query или body нельзя.
+        return Collection::from($this->query())
             ->merge($this->body(), ['recursive' => true])
             ->merge($this->files(), ['recursive' => true])
-            ->merge($this->attributes(), ['recursive' => true])
+            ->merge($this->routeParams(), ['recursive' => true])
             ->all();
     }
 }

@@ -8,12 +8,18 @@
 
 ## Request
 
-`Request` объединяет данные из query/body/cookies/files/attributes и предоставляет методы:
+`Request` объединяет входные данные из query/body/files и параметров маршрута и предоставляет методы:
 
-- `all()` — объединённые данные;
-- `input($path, $default)` — доступ по пути;
+- `all()` — объединённые входные данные (query < body < files < параметры маршрута);
+- `input($path, $default)` / `has($path)` — доступ по пути внутри `all()`;
+- `routeParams()` — параметры маршрута из атрибута `_route_params` (константа `Request::ROUTE_PARAMS_ATTRIBUTE`);
 - `query()` / `body()` / `cookies()` / `files()` / `attributes()` — отдельные источники;
 - `psr()` — оригинальный PSR‑7 запрос.
+
+Cookies и атрибуты PSR-запроса в `all()` не входят: идентификатор сессии, remember-token, объект пользователя
+и служебные атрибуты маршрута не должны попадать в валидацию и `withInput()`, а правило `Present('token')`
+не должно выполняться за счёт cookie. Такие данные читаются явно через `cookies()` / `attributes()`.
+Параметры маршрута включены и перекрывают одноимённые поля body и query.
 
 ## RequestSchema
 
@@ -30,6 +36,34 @@ final class ProfileRequest extends RequestSchema
     }
 }
 ```
+
+### Порядок обработки
+
+`process()` (и `validate()` / `validationResult()`) выполняет шаги:
+
+1. загружает payload из `Request` (исходные данные запроса, см. ниже);
+2. вызывает `beforeValidation()`;
+3. применяет `filters()` из definition;
+4. валидирует payload по `rules()`.
+
+Payload схемы и данные `Request` синхронизируются, поэтому в `beforeValidation()` можно менять данные любым
+способом — правки не теряются:
+
+```php
+public function beforeValidation(): void
+{
+    // Через payload схемы.
+    $this->mergePayload(['status' => $this->payload()['status'] ?? 'all']);
+
+    // Или через Request, как раньше.
+    $this->request->filter(['name' => [new TrimFilter()]]);
+}
+```
+
+После обработки отфильтрованный payload записывается в `Request`. Повторный `process()` и копии схемы
+(`only()`, `except()`, `merge()`) начинают с исходных данных запроса, а не с уже отфильтрованных, поэтому
+фильтры не применяются дважды. Если `Request` изменили снаружи схемы (например, `$request->merge()` в action
+после создания схемы), при следующей обработке будут использованы актуальные данные `Request`.
 
 В `RequestSchema` доступны helpers для параметров маршрута:
 
@@ -282,13 +316,21 @@ InputSchemaDefinition::make(
 `except()` удаляет поле из definition: правил, фильтров, сообщений и подписей.
 Входной payload этим методом не изменяется; если нужно физически убрать данные из запроса, это нужно делать отдельным фильтром или передавать уже очищенный payload.
 
+Все операции ниже не меняют исходную схему, а возвращают её копию с дополнительным мутатором
+(исходная схема и её definition остаются прежними). Результат нужно присвоить или сразу использовать:
+
+```php
+$schema = $schema->only(['name']); // верно
+$schema->only(['name']);           // ничего не изменит
+```
+
 Доступные операции:
 
 - `merge($part)` — добавляет rules/filters/messages/attributes из `InputSchemaDefinition` или `InputSchemaPartInterface`;
 - `replaceDefinition($definition)` — полностью заменяет базовую схему;
 - `only($paths)` — оставляет выбранные пути и родительские правила;
 - `except($paths)` — удаляет выбранные пути и дочерние правила;
-- `withMutator($mutator)` — подключает собственный `InputSchemaMutatorInterface`.
+- `withMutator($mutator)` — возвращает копию схемы с собственным `InputSchemaMutatorInterface`.
 
 Для переиспользуемых частей можно вынести описание в класс:
 

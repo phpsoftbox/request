@@ -25,6 +25,14 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
     private array $definitionMutators = [];
 
     /**
+     * Payload до первой обработки: повторный process() и копии схемы начинают с него,
+     * а не с уже отфильтрованных данных.
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $sourcePayload = null;
+
+    /**
      * @param array<string, mixed> $payload
      */
     public function __construct(
@@ -53,6 +61,8 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
 
     public function process(?ValidationOptions $options = null): ValidationResult
     {
+        $this->sourcePayload ??= $this->payload;
+        $this->replacePayload($this->sourcePayload);
         $this->beforeValidation();
         $definition = $this->schemaDefinition();
 
@@ -78,11 +88,15 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
         return [];
     }
 
+    /**
+     * Возвращает копию схемы с дополнительным мутатором definition; исходная схема не меняется.
+     */
     public function withMutator(InputSchemaMutatorInterface $mutator): static
     {
-        $this->definitionMutators[] = $mutator;
+        $schema                       = clone $this;
+        $schema->definitionMutators[] = $mutator;
 
-        return $this;
+        return $schema;
     }
 
     public function replaceDefinition(InputSchemaDefinition|InputSchemaPartInterface $definition): static
@@ -132,9 +146,11 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
      */
     protected function mergePayload(array $patch): void
     {
-        $this->payload = Collection::from($this->payload)
-            ->merge($patch, ['recursive' => true])
-            ->all();
+        $this->replacePayload(
+            Collection::from($this->payload)
+                ->merge($patch, ['recursive' => true])
+                ->all(),
+        );
     }
 
     protected function validationContext(): mixed
