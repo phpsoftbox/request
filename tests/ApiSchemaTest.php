@@ -196,7 +196,7 @@ final class ApiSchemaTest extends TestCase
             }
         };
 
-        $part = new class () extends AbstractInputSchemaPart {
+        $part = new readonly class () extends AbstractInputSchemaPart {
             public function rules(): array
             {
                 return ['email' => ['email']];

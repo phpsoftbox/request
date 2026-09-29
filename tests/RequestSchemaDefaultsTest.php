@@ -189,7 +189,7 @@ final class RequestSchemaDefaultsTest extends TestCase
     #[Test]
     public function abstractPartHasEmptyOptionalSections(): void
     {
-        $part = new class () extends AbstractInputSchemaPart {
+        $part = new readonly class () extends AbstractInputSchemaPart {
             public function rules(): array
             {
                 return ['name' => []];
