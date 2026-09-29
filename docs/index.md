@@ -81,8 +81,8 @@ final class SupportFiltersRequest extends RequestSchema
 - у каждого пути умолчания должно быть правило в `rules()`, иначе `LogicException`: без правила `validated()`
   отбросит поле, и умолчание молча потеряется;
 - умолчания входят в definition: `only()` / `except()` / `merge()` учитывают их так же, как правила
-  (`InputSchemaDefinition::make(defaults: …)`, `withDefaults()`, `mergeDefaults()`); часть схемы задаёт умолчания
-  через `InputSchemaDefaultsInterface`.
+  (`InputSchemaDefinition::make(defaults: …)`, `withDefaults()`, `mergeDefaults()`); часть схемы задаёт их в
+  `defaults()`.
 
 Умолчания через фильтры тоже работают (`DefaultFilter('all')`, `IntegerFilter(1)` для непереданного поля — см.
 README `phpsoftbox/validator`), но `defaults()` отделяет «подставить отсутствующее» от «нормализовать переданное».
@@ -259,7 +259,7 @@ final class SlugFilter
 
 ```php
 use PhpSoftBox\Request\InputSchemaDefinition;
-use PhpSoftBox\Request\InputSchemaPartInterface;
+use PhpSoftBox\Request\AbstractInputSchemaPart;
 use PhpSoftBox\Request\RequestSchema;
 use PhpSoftBox\Filter\NullIfEmptyFilter;
 use PhpSoftBox\Filter\TrimFilter;
@@ -297,7 +297,7 @@ final class ProductRequest extends RequestSchema
     }
 }
 
-final class ProductBarcodeSchemaPart implements InputSchemaPartInterface
+final class ProductBarcodeSchemaPart extends AbstractInputSchemaPart
 {
     public function rules(): array
     {
@@ -311,11 +311,6 @@ final class ProductBarcodeSchemaPart implements InputSchemaPartInterface
         return [
             'barcode' => [new TrimFilter(), new NullIfEmptyFilter()],
         ];
-    }
-
-    public function messages(): array
-    {
-        return [];
     }
 
     public function attributes(): array
@@ -367,7 +362,7 @@ $schema->only(['name']);           // ничего не изменит
 
 Доступные операции:
 
-- `merge($part)` — добавляет rules/filters/messages/attributes из `InputSchemaDefinition` или `InputSchemaPartInterface`;
+- `merge($part)` — добавляет rules/filters/messages/attributes/defaults из `InputSchemaDefinition` или `InputSchemaPartInterface`;
 - `replaceDefinition($definition)` — полностью заменяет базовую схему;
 - `only($paths)` — оставляет выбранные пути и родительские правила;
 - `except($paths)` — удаляет выбранные пути и дочерние правила;
@@ -376,7 +371,7 @@ $schema->only(['name']);           // ничего не изменит
 Для переиспользуемых частей можно вынести описание в класс:
 
 ```php
-final class DriverDataSchemaPart implements InputSchemaPartInterface
+final class DriverDataSchemaPart extends AbstractInputSchemaPart
 {
     public function rules(): array
     {
@@ -387,15 +382,16 @@ final class DriverDataSchemaPart implements InputSchemaPartInterface
     {
         return ['driver_name' => [new TrimFilter(), new NullIfEmptyFilter()]];
     }
+}
+```
 
-    public function messages(): array
-    {
-        return [];
-    }
+`AbstractInputSchemaPart` требует только `rules()`; `filters()`, `messages()`, `attributes()`, `defaults()` по
+умолчанию пустые. Если часть реализует `InputSchemaPartInterface` напрямую, нужны все пять методов.
 
-    public function attributes(): array
-    {
-        return [];
-    }
+```php
+// Своя реализация интерфейса без базового класса.
+public function defaults(): array
+{
+    return [];
 }
 ```

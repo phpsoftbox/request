@@ -7,11 +7,13 @@ namespace PhpSoftBox\Request\Tests;
 use LogicException;
 use PhpSoftBox\Http\Message\ServerRequest;
 use PhpSoftBox\Request\AbstractInputSchema;
+use PhpSoftBox\Request\AbstractInputSchemaPart;
 use PhpSoftBox\Request\InputSchemaDefinition;
 use PhpSoftBox\Request\Request;
 use PhpSoftBox\Request\RequestSchema;
 use PhpSoftBox\Request\Tests\Fixtures\DefaultsRequestSchema;
 use PhpSoftBox\Request\Tests\Fixtures\DefaultWithoutRuleRequestSchema;
+use PhpSoftBox\Request\Tests\Fixtures\PagingSchemaPart;
 use PhpSoftBox\Validator\Validator;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\CoversMethod;
@@ -21,10 +23,12 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(AbstractInputSchema::class)]
 #[CoversClass(RequestSchema::class)]
 #[CoversClass(InputSchemaDefinition::class)]
+#[CoversClass(AbstractInputSchemaPart::class)]
 #[CoversMethod(AbstractInputSchema::class, 'applyDefinitionDefaults')]
 #[CoversMethod(RequestSchema::class, 'process')]
 #[CoversMethod(InputSchemaDefinition::class, 'only')]
 #[CoversMethod(InputSchemaDefinition::class, 'merge')]
+#[CoversMethod(InputSchemaDefinition::class, 'fromPart')]
 final class RequestSchemaDefaultsTest extends TestCase
 {
     /**
@@ -160,6 +164,39 @@ final class RequestSchemaDefaultsTest extends TestCase
             ->merge(InputSchemaDefinition::make(defaults: ['page' => 10]));
 
         self::assertSame(['page' => 10, 'status' => 'all'], $definition->defaults());
+    }
+
+    /**
+     * Проверим, что умолчания части схемы, подключённой через merge(), подставляются вместе с её правилами.
+     *
+     * @see InputSchemaDefinition::fromPart()
+     */
+    #[Test]
+    public function mergedPartDefaultsAreApplied(): void
+    {
+        $schema = new DefaultsRequestSchema($this->request([]))->merge(new PagingSchemaPart());
+
+        $schema->validate();
+
+        self::assertSame(50, $schema->validated()['per_page']);
+    }
+
+    /**
+     * Проверим, что AbstractInputSchemaPart по умолчанию не задаёт фильтров, сообщений, атрибутов и умолчаний.
+     *
+     * @see AbstractInputSchemaPart::defaults()
+     */
+    #[Test]
+    public function abstractPartHasEmptyOptionalSections(): void
+    {
+        $part = new class () extends AbstractInputSchemaPart {
+            public function rules(): array
+            {
+                return ['name' => []];
+            }
+        };
+
+        self::assertSame([[], [], [], []], [$part->filters(), $part->messages(), $part->attributes(), $part->defaults()]);
     }
 
     /**

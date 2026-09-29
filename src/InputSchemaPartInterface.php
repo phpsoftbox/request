@@ -25,4 +25,12 @@ interface InputSchemaPartInterface
      * @return array<string, string>
      */
     public function attributes(): array;
+
+    /**
+     * Значения по умолчанию для непереданных полей. Ключ — dot-путь поля (`status`, `items.*.quantity`), значение
+     * подставляется, только если путь отсутствует в payload. У каждого пути должно быть правило в `rules()`.
+     *
+     * @return array<string, mixed>
+     */
+    public function defaults(): array;
 }

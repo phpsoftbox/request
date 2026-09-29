@@ -20,7 +20,7 @@ use function trim;
 
 use const ARRAY_FILTER_USE_BOTH;
 
-final readonly class InputSchemaDefinition implements InputSchemaPartInterface, InputSchemaDefaultsInterface
+final readonly class InputSchemaDefinition implements InputSchemaPartInterface
 {
     /**
      * @param array<string, mixed> $rules
@@ -62,7 +62,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface, 
             filters: $part->filters(),
             messages: $part->messages(),
             attributes: $part->attributes(),
-            defaults: $part instanceof InputSchemaDefaultsInterface ? $part->defaults() : [],
+            defaults: $part->defaults(),
         );
     }
 
