@@ -20,6 +20,7 @@
     },
     "require-dev": {
         "phpsoftbox/cs-fixer": "^1.2.2",
+        "phpsoftbox/filter": "^1.0",
         "phpsoftbox/http-message": "^1.0",
         "phpunit/phpunit": "^13.3"
     },

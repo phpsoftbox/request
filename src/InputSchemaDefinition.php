@@ -20,19 +20,21 @@ use function trim;
 
 use const ARRAY_FILTER_USE_BOTH;
 
-final readonly class InputSchemaDefinition implements InputSchemaPartInterface
+final readonly class InputSchemaDefinition implements InputSchemaPartInterface, InputSchemaDefaultsInterface
 {
     /**
      * @param array<string, mixed> $rules
      * @param array<string, callable(mixed): mixed|list<callable(mixed): mixed>> $filters
      * @param array<string, mixed> $messages
      * @param array<string, string> $attributes
+     * @param array<string, mixed> $defaults
      */
     public function __construct(
         private array $rules = [],
         private array $filters = [],
         private array $messages = [],
         private array $attributes = [],
+        private array $defaults = [],
     ) {
     }
 
@@ -41,14 +43,16 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
      * @param array<string, callable(mixed): mixed|list<callable(mixed): mixed>> $filters
      * @param array<string, mixed> $messages
      * @param array<string, string> $attributes
+     * @param array<string, mixed> $defaults
      */
     public static function make(
         array $rules = [],
         array $filters = [],
         array $messages = [],
         array $attributes = [],
+        array $defaults = [],
     ): self {
-        return new self($rules, $filters, $messages, $attributes);
+        return new self($rules, $filters, $messages, $attributes, $defaults);
     }
 
     public static function fromPart(InputSchemaPartInterface $part): self
@@ -58,6 +62,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
             filters: $part->filters(),
             messages: $part->messages(),
             attributes: $part->attributes(),
+            defaults: $part instanceof InputSchemaDefaultsInterface ? $part->defaults() : [],
         );
     }
 
@@ -70,6 +75,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
             filters: $this->mergeArray($this->filters, $definition->filters()),
             messages: $this->mergeArray($this->messages, $definition->messages()),
             attributes: $this->mergeArray($this->attributes, $definition->attributes()),
+            defaults: [...$this->defaults, ...$definition->defaults()],
         );
     }
 
@@ -106,11 +112,19 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function defaults(): array
+    {
+        return $this->defaults;
+    }
+
+    /**
      * @param array<string, mixed> $rules
      */
     public function withRules(array $rules): self
     {
-        return new self($rules, $this->filters, $this->messages, $this->attributes);
+        return new self($rules, $this->filters, $this->messages, $this->attributes, $this->defaults);
     }
 
     /**
@@ -126,7 +140,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
      */
     public function withFilters(array $filters): self
     {
-        return new self($this->rules, $filters, $this->messages, $this->attributes);
+        return new self($this->rules, $filters, $this->messages, $this->attributes, $this->defaults);
     }
 
     /**
@@ -142,7 +156,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
      */
     public function withMessages(array $messages): self
     {
-        return new self($this->rules, $this->filters, $messages, $this->attributes);
+        return new self($this->rules, $this->filters, $messages, $this->attributes, $this->defaults);
     }
 
     /**
@@ -158,7 +172,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
      */
     public function withAttributes(array $attributes): self
     {
-        return new self($this->rules, $this->filters, $this->messages, $attributes);
+        return new self($this->rules, $this->filters, $this->messages, $attributes, $this->defaults);
     }
 
     /**
@@ -167,6 +181,22 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
     public function mergeAttributes(array $attributes): self
     {
         return $this->withAttributes($this->mergeArray($this->attributes, $attributes));
+    }
+
+    /**
+     * @param array<string, mixed> $defaults
+     */
+    public function withDefaults(array $defaults): self
+    {
+        return new self($this->rules, $this->filters, $this->messages, $this->attributes, $defaults);
+    }
+
+    /**
+     * @param array<string, mixed> $defaults
+     */
+    public function mergeDefaults(array $defaults): self
+    {
+        return $this->withDefaults([...$this->defaults, ...$defaults]);
     }
 
     /**
@@ -181,6 +211,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
             filters: $this->onlyMap($this->filters, $paths),
             messages: $this->onlyMap($this->messages, $paths),
             attributes: $this->onlyMap($this->attributes, $paths),
+            defaults: $this->onlyMap($this->defaults, $paths),
         );
     }
 
@@ -196,6 +227,7 @@ final readonly class InputSchemaDefinition implements InputSchemaPartInterface
             filters: $this->withoutMap($this->filters, $paths),
             messages: $this->withoutMap($this->messages, $paths),
             attributes: $this->withoutMap($this->attributes, $paths),
+            defaults: $this->withoutMap($this->defaults, $paths),
         );
     }
 

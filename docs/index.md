@@ -42,9 +42,50 @@ final class ProfileRequest extends RequestSchema
 `process()` (и `validate()` / `validationResult()`) выполняет шаги:
 
 1. загружает payload из `Request` (исходные данные запроса, см. ниже);
-2. вызывает `beforeValidation()`;
-3. применяет `filters()` из definition;
-4. валидирует payload по `rules()`.
+2. подставляет `defaults()` в непереданные поля (см. «Значения по умолчанию»);
+3. вызывает `beforeValidation()`;
+4. применяет `filters()` из definition;
+5. валидирует payload по `rules()`.
+
+### Значения по умолчанию
+
+`defaults()` задаёт значения для полей, которых нет в запросе:
+
+```php
+final class SupportFiltersRequest extends RequestSchema
+{
+    public function defaults(): array
+    {
+        return ['status' => 'all', 'page' => 1, 'only_my' => false, 'items.*.quantity' => 1];
+    }
+
+    public function rules(): array
+    {
+        return [
+            'status'           => [new StringValidation()],
+            'page'             => [new IntValidation()],
+            'only_my'          => [new BoolValidation()],
+            'items'            => [new ArrayValidation()],
+            'items.*.quantity' => [new IntValidation()],
+        ];
+    }
+}
+```
+
+- умолчание подставляется, только если пути нет в payload; переданные `null` и `''` не заменяются — это задача
+  фильтров (`DefaultFilter`);
+- подстановка идёт до `beforeValidation()` и фильтров: хук и фильтры видят значение, правила проверяют его как
+  переданное, поле попадает в `validated()` / `filteredData()`;
+- wildcard-путь (`items.*.quantity`) заполняет только существующие элементы-массивы; пустой или отсутствующий
+  список не заполняется;
+- у каждого пути умолчания должно быть правило в `rules()`, иначе `LogicException`: без правила `validated()`
+  отбросит поле, и умолчание молча потеряется;
+- умолчания входят в definition: `only()` / `except()` / `merge()` учитывают их так же, как правила
+  (`InputSchemaDefinition::make(defaults: …)`, `withDefaults()`, `mergeDefaults()`); часть схемы задаёт умолчания
+  через `InputSchemaDefaultsInterface`.
+
+Умолчания через фильтры тоже работают (`DefaultFilter('all')`, `IntegerFilter(1)` для непереданного поля — см.
+README `phpsoftbox/validator`), но `defaults()` отделяет «подставить отсутствующее» от «нормализовать переданное».
 
 Payload схемы и данные `Request` синхронизируются, поэтому в `beforeValidation()` можно менять данные любым
 способом — правки не теряются:
