@@ -5,7 +5,7 @@
 `phpsoftbox/request` — тонкая оболочка над PSR‑7 запросом с удобными методами доступа к данным и встроенной валидацией через `phpsoftbox/validator`.
 
 Ключевые возможности:
-- единый доступ к query/body/cookies/files/attributes;
+- единый доступ к входным данным (query/body/files и параметры маршрута) и отдельный доступ к cookies/attributes;
 - валидация через `Request::validate()`, `RequestSchema` и `ApiSchema`;
 - доступ к оригинальному PSR‑7 запросу через `psr()`.
 
@@ -25,6 +25,17 @@ $data = $request->validate([
     ],
 ]);
 ```
+
+### Входные данные
+
+`all()`, `input()` и `has()` работают только с входными данными запроса: query, body, загруженными файлами
+и параметрами маршрута (атрибут `_route_params`, который выставляет router; доступны также через `routeParams()`).
+Приоритет при совпадении ключей: query < body < files < параметры маршрута — подменить параметр маршрута
+через body нельзя.
+
+Cookies и атрибуты PSR-запроса (идентификатор сессии, remember-token, объект пользователя, служебные атрибуты
+маршрута) в `all()` не попадают, а значит не попадают в валидацию и в `withInput()`. Читайте их явно:
+`cookies()`, `attributes()` или `psr()->getAttribute()`.
 
 ## RequestSchema
 
@@ -54,6 +65,12 @@ final class LoginRequest extends RequestSchema
 $schema = new LoginRequest($request);
 $data = $schema->validate();
 ```
+
+`process()` загружает payload из `Request` до вызова `beforeValidation()`. В хуке можно менять данные
+как через `$this->mergePayload()` / `$this->replacePayload()`, так и через `$this->request->filter()` /
+`merge()` / `replace()`: payload схемы и данные `Request` синхронизируются, правки доходят до фильтров,
+валидации и `Request`. Повторная обработка схемы и её копии (`only()`, `except()`, `merge()`) начинают
+с исходных данных запроса, а не с уже отфильтрованных.
 
 Внутри `RequestSchema` можно читать параметры текущего маршрута через helper `route()`:
 
@@ -184,7 +201,8 @@ if ($result->hasErrors()) {
 $data = $result->filteredData();
 ```
 
-`process()` включает `beforeValidation()`, фильтры и валидацию. Ошибки фильтров также
+`process()` включает `beforeValidation()`, фильтры и валидацию. Каждый вызов начинает с исходного payload,
+поэтому повторный `process()`/`validate()` не применяет фильтры к уже отфильтрованным данным. Ошибки фильтров также
 возвращаются в `ValidationResult` и не преобразуются в `ValidationException`.
 `validationResult()` сохранён как совместимый alias для `process()`.
 
@@ -205,6 +223,10 @@ $schema = (new TaskTransitionRequest($request))
 
 $data = $schema->validate();
 ```
+
+`merge()`, `only()`, `except()`, `replaceDefinition()` и `withMutator()` не меняют исходную схему, а возвращают
+её копию с дополнительным мутатором. Результат нужно использовать: `$schema->only([...]);` без присваивания
+ничего не изменит.
 
 Для переиспользуемых частей схемы можно реализовать `InputSchemaPartInterface`.
 

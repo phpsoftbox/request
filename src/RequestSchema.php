@@ -7,14 +7,30 @@ namespace PhpSoftBox\Request;
 use PhpSoftBox\Validator\ValidationOptions;
 use PhpSoftBox\Validator\ValidationResult;
 
-use function is_array;
-
 abstract class RequestSchema extends AbstractInputSchema
 {
+    /**
+     * Исходные данные запроса, с которых начинается каждый process(): повторная обработка
+     * и копии схемы (only(), except(), merge()) не применяют фильтры к уже отфильтрованным данным.
+     *
+     * @var array<string, mixed>
+     */
+    private array $sourcePayload;
+
+    /**
+     * Последний payload, записанный схемой в Request через replacePayload().
+     *
+     * @var array<string, mixed>
+     */
+    private array $syncedPayload;
+
     public function __construct(
         protected Request $request,
     ) {
-        parent::__construct($request->all(), $request->validator());
+        $this->sourcePayload = $request->all();
+        $this->syncedPayload = $this->sourcePayload;
+
+        parent::__construct($this->sourcePayload, $request->validator());
     }
 
     public function beforeValidation(): void
@@ -23,12 +39,15 @@ abstract class RequestSchema extends AbstractInputSchema
 
     public function process(?ValidationOptions $options = null): ValidationResult
     {
+        // Payload загружается до хука: правки через mergePayload()/replacePayload() и через Request
+        // (filter(), merge(), replace()) внутри beforeValidation() сохраняются.
+        $this->refreshSourcePayload();
+        $this->replacePayload($this->sourcePayload);
         $this->beforeValidation();
-        $this->replacePayload($this->request->all());
+        $this->syncPayloadAfterHook();
         $definition = $this->schemaDefinition();
 
         $filterResult = $this->applyDefinitionFilters($definition);
-        $this->request->replace($this->payload());
         if ($filterResult !== null) {
             $this->setValidationResult($filterResult);
 
@@ -38,7 +57,6 @@ abstract class RequestSchema extends AbstractInputSchema
         $result = $this->validatePayload($definition, $options);
 
         $this->setValidationResult($result);
-        $this->request->replace($this->payload());
 
         return $result;
     }
@@ -46,6 +64,18 @@ abstract class RequestSchema extends AbstractInputSchema
     public function request(): Request
     {
         return $this->request;
+    }
+
+    /**
+     * Payload схемы и данные Request синхронизируются: правки видны и через payload(), и через Request.
+     *
+     * @param array<string, mixed> $payload
+     */
+    protected function replacePayload(array $payload): void
+    {
+        parent::replacePayload($payload);
+        $this->request->replace($payload);
+        $this->syncedPayload = $payload;
     }
 
     protected function route(): RouteParameters
@@ -59,15 +89,38 @@ abstract class RequestSchema extends AbstractInputSchema
     }
 
     /**
+     * Если Request изменили снаружи схемы (после её создания или последней обработки),
+     * исходными данными становятся актуальные данные Request.
+     */
+    private function refreshSourcePayload(): void
+    {
+        $current = $this->request->all();
+
+        if ($current !== $this->syncedPayload) {
+            $this->sourcePayload = $current;
+        }
+    }
+
+    /**
+     * Прямое присваивание `$this->payload` в хуке переносится в Request; иначе берутся данные Request,
+     * которые хук мог изменить через Request::filter()/merge()/replace().
+     */
+    private function syncPayloadAfterHook(): void
+    {
+        if ($this->payload !== $this->syncedPayload) {
+            $this->replacePayload($this->payload);
+
+            return;
+        }
+
+        $this->replacePayload($this->request->all());
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function routeParams(): array
     {
-        $routeParams = $this->request->psr()->getAttribute('_route_params');
-        if (!is_array($routeParams)) {
-            return [];
-        }
-
-        return $routeParams;
+        return $this->request->routeParams();
     }
 }

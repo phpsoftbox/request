@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace PhpSoftBox\Request\Tests;
 
 use InvalidArgumentException;
+use PhpSoftBox\Request\AbstractInputSchema;
 use PhpSoftBox\Request\ApiSchema;
 use PhpSoftBox\Request\InputSchemaDefinition;
 use PhpSoftBox\Request\InputSchemaMutatorInterface;
 use PhpSoftBox\Request\InputSchemaPartInterface;
+use PhpSoftBox\Request\Tests\Fixtures\RecordingValidator;
 use PhpSoftBox\Validator\Exception\ValidationException;
 use PhpSoftBox\Validator\ValidationOptions;
 use PhpSoftBox\Validator\ValidationResult;
@@ -22,6 +24,7 @@ use function strtolower;
 use function trim;
 
 #[CoversClass(ApiSchema::class)]
+#[CoversClass(AbstractInputSchema::class)]
 final class ApiSchemaTest extends TestCase
 {
     #[Test]
@@ -457,6 +460,65 @@ final class ApiSchemaTest extends TestCase
         self::assertSame(['email'], array_keys($validator->lastRules));
         self::assertSame('  Alex  ', $validator->lastData['name'] ?? null);
         self::assertSame('user@example.test', $validator->lastData['email'] ?? null);
+    }
+
+    /**
+     * Проверяет, что only() возвращает новую схему, а исходная схема сохраняет своё definition.
+     *
+     * @see AbstractInputSchema::only()
+     * @see AbstractInputSchema::withMutator()
+     */
+    #[Test]
+    public function onlyReturnsCopyWithoutMutatingOriginalSchema(): void
+    {
+        $validator = new RecordingValidator();
+
+        $schema = new class (['name' => 'Alex', 'email' => 'alex@example.test'], $validator) extends ApiSchema {
+            public function rules(): array
+            {
+                return ['name' => ['string'], 'email' => ['email']];
+            }
+        };
+
+        $limited = $schema->only(['email']);
+
+        // Копия валидирует только email.
+        $limited->validate();
+        self::assertNotSame($schema, $limited);
+        self::assertSame(['email'], array_keys($validator->lastRules));
+
+        // Исходная схема по-прежнему валидирует все поля.
+        $schema->validate();
+        self::assertSame(['name', 'email'], array_keys($validator->lastRules));
+    }
+
+    /**
+     * Проверяет, что повторный process() начинает с исходного payload и не применяет фильтры дважды.
+     *
+     * @see AbstractInputSchema::process()
+     */
+    #[Test]
+    public function repeatedProcessDoesNotFilterTwice(): void
+    {
+        $validator = new RecordingValidator();
+
+        $schema = new class (['name' => 'alex'], $validator) extends ApiSchema {
+            public function rules(): array
+            {
+                return ['name' => []];
+            }
+
+            public function filters(): array
+            {
+                return ['name' => static fn (mixed $value): string => $value . '!'];
+            }
+        };
+
+        $schema->process();
+        $schema->process();
+
+        self::assertSame('alex!', $validator->lastData['name'] ?? null);
+        self::assertSame('alex!', $schema->getString('name'));
     }
 
     /**

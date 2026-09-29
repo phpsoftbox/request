@@ -14,42 +14,113 @@ use PhpSoftBox\Validator\ValidationError;
 use PhpSoftBox\Validator\ValidationOptions;
 use PhpSoftBox\Validator\ValidationResult;
 use PhpSoftBox\Validator\ValidatorInterface;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\CoversMethod;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
+use stdClass;
 
 use function strtoupper;
 use function trim;
 
+#[CoversClass(Request::class)]
+#[CoversMethod(Request::class, 'all')]
+#[CoversMethod(Request::class, 'routeParams')]
+#[CoversMethod(Request::class, 'merge')]
+#[CoversMethod(Request::class, 'replace')]
+#[CoversMethod(Request::class, 'validate')]
+#[CoversMethod(Request::class, 'filter')]
+#[CoversMethod(Request::class, 'input')]
+#[CoversMethod(Request::class, 'has')]
 final class RequestTest extends TestCase
 {
     /**
-     * Проверяем, что Request собирает данные из query, body, cookies, files и attributes.
+     * Проверяем, что all() собирает query, body и files, причём body перекрывает query.
+     *
+     * @see Request::all()
      */
-    public function testCollectsAllSources(): void
+    #[Test]
+    public function allCollectsQueryBodyAndFiles(): void
     {
         $psr = new ServerRequest(
             'POST',
             'https://example.com/test?from=query',
-            cookieParams: ['from' => 'cookie'],
             queryParams: ['from' => 'query'],
             uploadedFiles: ['file' => new UploadedFile(new Stream('file'), size: 4)],
             parsedBody: ['from' => 'body'],
-            attributes: ['from' => 'attr'],
         );
 
-        $validator = $this->stubValidator();
-        $request   = new Request($psr, $validator);
+        $request = new Request($psr, $this->stubValidator());
 
         $data = $request->all();
 
-        $this->assertSame('attr', $data['from']);
+        $this->assertSame('body', $data['from']);
         $this->assertInstanceOf(UploadedFileInterface::class, $data['file']);
     }
 
     /**
-     * Проверяем работу merge() и replace().
+     * Проверяем, что cookies и атрибуты PSR-запроса (сессия, пользователь, служебные данные маршрута)
+     * не попадают во входные данные, но остаются доступны через cookies() и attributes().
+     *
+     * @see Request::all()
      */
-    public function testMergeAndReplace(): void
+    #[Test]
+    public function allExcludesCookiesAndRequestAttributes(): void
+    {
+        $psr = new ServerRequest(
+            'POST',
+            'https://example.com/',
+            cookieParams: ['token' => 'remember-token', 'session_id' => 'sid'],
+            parsedBody: ['name' => 'Alex'],
+            attributes: [
+                'user'    => new stdClass(),
+                '_route'  => 'profile.update',
+                'session' => 'session-object',
+            ],
+        );
+
+        $request = new Request($psr, $this->stubValidator());
+
+        $this->assertSame(['name' => 'Alex'], $request->all());
+        $this->assertFalse($request->has('token'));
+        $this->assertSame('remember-token', $request->cookies()['token']);
+        $this->assertSame('profile.update', $request->attributes()['_route']);
+    }
+
+    /**
+     * Проверяем, что параметры маршрута из `_route_params` попадают в all() и не подменяются через body.
+     *
+     * @see Request::all()
+     * @see Request::routeParams()
+     */
+    #[Test]
+    public function allIncludesRouteParamsWithPriorityOverBody(): void
+    {
+        $psr = new ServerRequest(
+            'POST',
+            'https://example.com/products/5',
+            parsedBody: ['id' => 999, 'name' => 'Alex'],
+            attributes: [
+                Request::ROUTE_PARAMS_ATTRIBUTE => ['id' => '5'],
+                'id'                            => '5',
+            ],
+        );
+
+        $request = new Request($psr, $this->stubValidator());
+
+        $this->assertSame(['id' => '5'], $request->routeParams());
+        $this->assertSame(['id' => '5', 'name' => 'Alex'], $request->all());
+    }
+
+    /**
+     * Проверяем работу merge() и replace().
+     *
+     * @see Request::merge()
+     * @see Request::replace()
+     */
+    #[Test]
+    public function mergeAndReplace(): void
     {
         $psr = new ServerRequest('GET', 'https://example.com/?a=1', queryParams: ['a' => 1]);
 
@@ -65,8 +136,11 @@ final class RequestTest extends TestCase
 
     /**
      * Проверяем, что validate() возвращает отфильтрованные данные и бросает исключение при ошибках.
+     *
+     * @see Request::validate()
      */
-    public function testValidateAndValidationResult(): void
+    #[Test]
+    public function validateAndValidationResult(): void
     {
         $psr       = new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => 'John']);
         $validator = $this->stubValidator(['name' => 'John']);
@@ -88,8 +162,11 @@ final class RequestTest extends TestCase
 
     /**
      * Проверяем, что filter() поддерживает цепочки фильтров.
+     *
+     * @see Request::filter()
      */
-    public function testFilterSupportsChains(): void
+    #[Test]
+    public function filterSupportsChains(): void
     {
         $psr       = new ServerRequest('POST', 'https://example.com/', parsedBody: ['name' => '  Alex  ']);
         $validator = $this->stubValidator();
@@ -107,8 +184,11 @@ final class RequestTest extends TestCase
 
     /**
      * Проверяем, что filter() поддерживает вложенные пути.
+     *
+     * @see Request::filter()
      */
-    public function testFilterSupportsNestedPaths(): void
+    #[Test]
+    public function filterSupportsNestedPaths(): void
     {
         $psr = new ServerRequest('POST', 'https://example.com/', parsedBody: [
             'user' => ['email' => '  a@b.c  '],
@@ -127,8 +207,11 @@ final class RequestTest extends TestCase
 
     /**
      * Проверяем, что filter() поддерживает подстановочные пути.
+     *
+     * @see Request::filter()
      */
-    public function testFilterSupportsWildcardPaths(): void
+    #[Test]
+    public function filterSupportsWildcardPaths(): void
     {
         $psr = new ServerRequest('POST', 'https://example.com/', parsedBody: [
             'items' => [
@@ -149,8 +232,12 @@ final class RequestTest extends TestCase
 
     /**
      * Проверяем методы input() и has().
+     *
+     * @see Request::input()
+     * @see Request::has()
      */
-    public function testInputAndHas(): void
+    #[Test]
+    public function inputAndHas(): void
     {
         $psr       = new ServerRequest('POST', 'https://example.com/', parsedBody: ['user' => ['email' => 'a@b.c']]);
         $validator = $this->stubValidator();
