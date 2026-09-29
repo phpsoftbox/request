@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpSoftBox\Request;
 
+use LogicException;
 use PhpSoftBox\Collection\Collection;
 use PhpSoftBox\Request\Mutator\ExceptInputSchemaMutator;
 use PhpSoftBox\Request\Mutator\MergeInputSchemaMutator;
@@ -11,13 +12,23 @@ use PhpSoftBox\Request\Mutator\OnlyInputSchemaMutator;
 use PhpSoftBox\Request\Mutator\ReplaceInputSchemaMutator;
 use PhpSoftBox\Validator\AbstractFormValidation;
 use PhpSoftBox\Validator\Exception\ValidationException;
+use PhpSoftBox\Validator\Support\DataPath;
 use PhpSoftBox\Validator\ValidationError;
 use PhpSoftBox\Validator\ValidationOptions;
 use PhpSoftBox\Validator\ValidationResult;
 use PhpSoftBox\Validator\Validator;
 use PhpSoftBox\Validator\ValidatorInterface;
 
-abstract class AbstractInputSchema extends AbstractFormValidation implements InputSchemaPartInterface
+use function array_key_exists;
+use function array_slice;
+use function explode;
+use function implode;
+use function is_array;
+use function is_string;
+use function sprintf;
+use function str_ends_with;
+
+abstract class AbstractInputSchema extends AbstractFormValidation implements InputSchemaPartInterface, InputSchemaDefaultsInterface
 {
     /**
      * @var list<InputSchemaMutatorInterface>
@@ -63,6 +74,7 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
     {
         $this->sourcePayload ??= $this->payload;
         $this->replacePayload($this->sourcePayload);
+        $this->applyDefinitionDefaults($this->schemaDefinition());
         $this->beforeValidation();
         $definition = $this->schemaDefinition();
 
@@ -84,6 +96,17 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
      * @return array<string, callable(mixed): mixed|list<callable(mixed): mixed>>
      */
     public function filters(): array
+    {
+        return [];
+    }
+
+    /**
+     * Значения по умолчанию для непереданных полей: подставляются до `beforeValidation()` и фильтров, дальше поле
+     * проходит фильтры и правила как переданное. Переданные `null` и `''` не заменяются — это задача фильтров.
+     *
+     * @return array<string, mixed>
+     */
+    public function defaults(): array
     {
         return [];
     }
@@ -170,6 +193,7 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
             filters: $this->filters(),
             messages: $this->messages(),
             attributes: $this->attributes(),
+            defaults: $this->defaults(),
         ));
 
         foreach ($this->definitionMutators as $mutator) {
@@ -177,6 +201,84 @@ abstract class AbstractInputSchema extends AbstractFormValidation implements Inp
         }
 
         return $definition;
+    }
+
+    /**
+     * Подставляет умолчания definition в непереданные поля. Точный путь создаётся вместе с родителями; wildcard-путь
+     * (`items.*.quantity`) заполняется только в существующих элементах, пустой список остаётся пустым.
+     */
+    protected function applyDefinitionDefaults(InputSchemaDefinition $definition): void
+    {
+        $defaults = $definition->defaults();
+        if ($defaults === []) {
+            return;
+        }
+
+        $rules   = $definition->rules();
+        $payload = $this->payload;
+
+        foreach ($defaults as $path => $value) {
+            if (!is_string($path) || $path === '' || str_ends_with($path, '*')) {
+                throw new LogicException(sprintf('Invalid default path "%s": expected a field path.', (string) $path));
+            }
+
+            // Поле без правила validated() отбросит, и умолчание молча потеряется.
+            if (!array_key_exists($path, $rules)) {
+                throw new LogicException(sprintf('Default for "%s" has no validation rule.', $path));
+            }
+
+            foreach ($this->defaultTargets($payload, explode('.', $path)) as $target) {
+                if (!DataPath::has($payload, $target)) {
+                    DataPath::set($payload, $target, $value);
+                }
+            }
+        }
+
+        if ($payload !== $this->payload) {
+            $this->replacePayload($payload);
+        }
+    }
+
+    /**
+     * Конкретные пути для умолчания: `*` раскрывается по существующим элементам.
+     *
+     * @param array<array-key, mixed> $data
+     * @param list<string> $segments
+     * @param list<string> $prefix
+     * @return list<string>
+     */
+    private function defaultTargets(array $data, array $segments, array $prefix = []): array
+    {
+        $wildcard = null;
+        foreach ($segments as $index => $segment) {
+            if ($segment === '*') {
+                $wildcard = $index;
+                break;
+            }
+        }
+
+        if ($wildcard === null) {
+            return [implode('.', [...$prefix, ...$segments])];
+        }
+
+        $parent = [...$prefix, ...array_slice($segments, 0, $wildcard)];
+        $items  = $parent === [] ? $data : DataPath::get($data, implode('.', $parent));
+        if (!is_array($items)) {
+            return [];
+        }
+
+        $rest    = array_slice($segments, $wildcard + 1);
+        $targets = [];
+        foreach ($items as $key => $item) {
+            // Подставить поле можно только в элемент-массив.
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $targets = [...$targets, ...$this->defaultTargets($data, $rest, [...$parent, (string) $key])];
+        }
+
+        return $targets;
     }
 
     protected function applyDefinitionFilters(InputSchemaDefinition $definition): ?ValidationResult

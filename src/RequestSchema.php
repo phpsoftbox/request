@@ -39,10 +39,11 @@ abstract class RequestSchema extends AbstractInputSchema
 
     public function process(?ValidationOptions $options = null): ValidationResult
     {
-        // Payload загружается до хука: правки через mergePayload()/replacePayload() и через Request
-        // (filter(), merge(), replace()) внутри beforeValidation() сохраняются.
+        // Payload загружается до хука, умолчания defaults() — тоже: хук и фильтры видят подставленные значения,
+        // правки через mergePayload()/replacePayload() и через Request (filter(), merge(), replace()) сохраняются.
         $this->refreshSourcePayload();
         $this->replacePayload($this->sourcePayload);
+        $this->applyDefinitionDefaults($this->schemaDefinition());
         $this->beforeValidation();
         $this->syncPayloadAfterHook();
         $definition = $this->schemaDefinition();

@@ -66,6 +66,9 @@ $schema = new LoginRequest($request);
 $data = $schema->validate();
 ```
 
+Значения по умолчанию для непереданных полей — `defaults()` (`['status' => 'all', 'page' => 1]`): подставляются до
+`beforeValidation()` и фильтров, у каждого поля должно быть правило. Подробно — [docs/index.md](docs/index.md#значения-по-умолчанию).
+
 `process()` загружает payload из `Request` до вызова `beforeValidation()`. В хуке можно менять данные
 как через `$this->mergePayload()` / `$this->replacePayload()`, так и через `$this->request->filter()` /
 `merge()` / `replace()`: payload схемы и данные `Request` синхронизируются, правки доходят до фильтров,
