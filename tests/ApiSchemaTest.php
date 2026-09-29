@@ -6,10 +6,10 @@ namespace PhpSoftBox\Request\Tests;
 
 use InvalidArgumentException;
 use PhpSoftBox\Request\AbstractInputSchema;
+use PhpSoftBox\Request\AbstractInputSchemaPart;
 use PhpSoftBox\Request\ApiSchema;
 use PhpSoftBox\Request\InputSchemaDefinition;
 use PhpSoftBox\Request\InputSchemaMutatorInterface;
-use PhpSoftBox\Request\InputSchemaPartInterface;
 use PhpSoftBox\Request\Tests\Fixtures\RecordingValidator;
 use PhpSoftBox\Validator\Exception\ValidationException;
 use PhpSoftBox\Validator\ValidationOptions;
@@ -196,7 +196,7 @@ final class ApiSchemaTest extends TestCase
             }
         };
 
-        $part = new class () implements InputSchemaPartInterface {
+        $part = new class () extends AbstractInputSchemaPart {
             public function rules(): array
             {
                 return ['email' => ['email']];

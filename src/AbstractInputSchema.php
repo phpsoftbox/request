@@ -28,7 +28,7 @@ use function is_string;
 use function sprintf;
 use function str_ends_with;
 
-abstract class AbstractInputSchema extends AbstractFormValidation implements InputSchemaPartInterface, InputSchemaDefaultsInterface
+abstract class AbstractInputSchema extends AbstractFormValidation implements InputSchemaPartInterface
 {
     /**
      * @var list<InputSchemaMutatorInterface>
